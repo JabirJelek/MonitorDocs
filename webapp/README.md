@@ -37,6 +37,25 @@ Endpoints:
 - `GET /progress` — list entries
 - `GET /progress/{id}` — fetch entry by id
 
+Additional fields and tab support:
+- `tab` (string): optional field on create/update used to categorize or partition progress entries. Defaults to `default` when absent.
+- `GET /progress?tab=<name>` — filter listings by `tab` value.
+- `GET /tabs` — returns a list of known/used tab names (distinct values from the DB).
+
+Example create payload (curl):
+
+```bash
+curl -X POST http://127.0.0.1:8000/progress \
+	-H 'Content-Type: application/json' \
+	-d '{"date":"2026-04-25","agent_id":"me","summary":"note","tags":[],"tab":"alpha"}'
+```
+
+List entries for a tab:
+
+```bash
+curl 'http://127.0.0.1:8000/progress?tab=alpha'
+```
+
 The SQLite file is created at `MonitorDocs/agents.db`.
 
 Frontend (landing page)

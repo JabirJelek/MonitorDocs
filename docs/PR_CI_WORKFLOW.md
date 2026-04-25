@@ -53,6 +53,18 @@ ruff check MonitorDocs/webapp
 pytest -q MonitorDocs/webapp/tests
 ```
 
+Testing the `tab` feature locally
+- The API supports a `tab` field for categorising entries. CI includes tests that cover `tab` behaviour (see `webapp/tests/test_tabs.py`).
+- Quick curl example to create and verify a tabbed entry:
+
+```bash
+curl -X POST http://127.0.0.1:8000/progress \
+  -H 'Content-Type: application/json' \
+  -d '{"date":"2026-04-25","agent_id":"me","summary":"tab-test","tags":[],"tab":"mytab"}'
+
+curl 'http://127.0.0.1:8000/progress?tab=mytab'
+```
+
 Troubleshooting common issues
 - "Could not import module 'main'" when running `uvicorn main:app`:
   - Either run `uvicorn webapp.main:app` from the repo root, or run `uvicorn main:app` from the `MonitorDocs/` directory (a top-level `main.py` re-exporting `webapp.main:app` exists).
