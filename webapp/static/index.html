@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MonitorDocs — Monitor</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <meta name="description" content="MonitorDocs — lightweight agent progress UI" />
+</head>
+<body>
+  <div id="app">
+    <div data-include="components/header.html"></div>
+
+    <main>
+      <section id="create-monitor">
+        <h2>Create Monitor Entry</h2>
+        <form id="monitor-form">
+          <label>Date:
+            <input type="date" name="date" required />
+          </label>
+          <label>Agent ID:
+            <input type="text" name="agent_id" required />
+          </label>
+          <label>Summary:
+            <textarea name="summary" rows="3"></textarea>
+          </label>
+          <label>Tags (comma separated):
+            <input type="text" name="tags" />
+          </label>
+          <div>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="list-monitors">
+        <h2>Saved Monitors</h2>
+        <ul id="monitor-list"></ul>
+      </section>
+    </main>
+
+    <div data-include="components/footer.html"></div>
+  </div>
+
+  <script src="/static/js/include.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
