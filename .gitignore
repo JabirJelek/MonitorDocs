@@ -1,0 +1,7 @@
+# Ignore local DB and models
+agents.db
+agents/*.db
+agents/knowledge/models/
+*.sqlite
+*.db
+__pycache__/
