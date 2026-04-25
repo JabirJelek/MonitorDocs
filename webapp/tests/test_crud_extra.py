@@ -24,7 +24,7 @@ def test_patch_and_partial_update(tmp_path: Path):
             "tags": ["x"],
         }
         res = client.post("/progress", json=payload)
-        assert res.status_code == 200
+        assert res.status_code == 201
         pid = res.json()["id"]
 
         # partial update: only summary

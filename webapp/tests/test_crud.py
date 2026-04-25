@@ -29,7 +29,7 @@ def test_full_crud_cycle(tmp_path: Path):
             "tags": ["t"],
         }
         res = client.post("/progress", json=payload)
-        assert res.status_code == 200
+        assert res.status_code == 201
         pid = res.json()["id"]
 
         # get

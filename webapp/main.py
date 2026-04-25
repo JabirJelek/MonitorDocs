@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import sqlite3
@@ -35,10 +35,15 @@ def init_db():
         agent_id TEXT NOT NULL,
         summary TEXT,
         artifacts TEXT,
-        tags TEXT
+        tags TEXT,
+        tab TEXT DEFAULT 'default'
     )
     """
     )
+    # Ensure `tab` column exists for older DBs
+    cols = [row["name"] for row in c.execute("PRAGMA table_info(progress)").fetchall()]
+    if "tab" not in cols:
+        c.execute("ALTER TABLE progress ADD COLUMN tab TEXT DEFAULT 'default'")
     conn.commit()
     conn.close()
 
@@ -56,8 +61,9 @@ class AgentProgress(BaseModel):
     date: str
     agent_id: str
     summary: Optional[str] = ""
-    artifacts: Optional[List[str]] = []
-    tags: Optional[List[str]] = []
+    artifacts: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    tab: Optional[str] = "default"
 
 
 class AgentProgressPatch(BaseModel):
@@ -66,6 +72,17 @@ class AgentProgressPatch(BaseModel):
     summary: Optional[str] = None
     artifacts: Optional[List[str]] = None
     tags: Optional[List[str]] = None
+    tab: Optional[str] = None
+
+
+class AgentProgressOut(BaseModel):
+    id: int
+    date: str
+    agent_id: str
+    summary: Optional[str] = None
+    artifacts: List[str]
+    tags: List[str]
+    tab: str
 
 
 @app.get("/")
@@ -94,40 +111,64 @@ def static_files(path: str):
     raise HTTPException(status_code=404, detail="Not found")
 
 
-@app.post("/progress")
+@app.post("/progress", response_model=AgentProgressOut, status_code=201)
 def create_progress(item: AgentProgress):
     conn = get_connection()
     c = conn.cursor()
+    artifacts = item.artifacts or []
+    tags = item.tags or []
+    tab = item.tab or "default"
     c.execute(
-        "INSERT INTO progress (date, agent_id, summary, artifacts, tags) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO progress (date, agent_id, summary, artifacts, tags, tab) VALUES (?, ?, ?, ?, ?, ?)",
         (
             item.date,
             item.agent_id,
             item.summary,
-            json.dumps(item.artifacts),
-            json.dumps(item.tags),
+            json.dumps(artifacts),
+            json.dumps(tags),
+            tab,
         ),
     )
     conn.commit()
     new_id = c.lastrowid
     conn.close()
-    return {"id": new_id}
+    resource = {
+        "id": new_id,
+        "date": item.date,
+        "agent_id": item.agent_id,
+        "summary": item.summary,
+        "artifacts": artifacts,
+        "tags": tags,
+        "tab": tab,
+    }
+    return JSONResponse(
+        status_code=201, content=resource, headers={"Location": f"/progress/{new_id}"}
+    )
 
 
-@app.get("/progress")
+@app.get("/progress", response_model=List[AgentProgressOut])
 def list_progress(
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
     agent_id: Optional[str] = None,
     tag: Optional[str] = None,
+    tab: Optional[str] = None,
 ):
     conn = get_connection()
     c = conn.cursor()
     params = []
-    sql = "SELECT * FROM progress"
+    where_clauses = []
     if agent_id:
-        sql += " WHERE agent_id = ?"
+        where_clauses.append("agent_id = ?")
         params.append(agent_id)
+    if tab:
+        where_clauses.append("tab = ?")
+        params.append(tab)
+
+    sql = "SELECT * FROM progress"
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+
     sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     rows = c.execute(sql, params).fetchall()
@@ -140,6 +181,7 @@ def list_progress(
             "summary": r["summary"],
             "artifacts": json.loads(r["artifacts"]) if r["artifacts"] else [],
             "tags": json.loads(r["tags"]) if r["tags"] else [],
+            "tab": r["tab"] or "default",
         }
         # optional tag filtering (simple, done in Python)
         if tag:
@@ -151,7 +193,16 @@ def list_progress(
     return result
 
 
-@app.patch("/progress/{progress_id}")
+@app.get("/tabs", response_model=List[str])
+def list_tabs():
+    conn = get_connection()
+    c = conn.cursor()
+    rows = c.execute("SELECT DISTINCT tab FROM progress ORDER BY tab").fetchall()
+    conn.close()
+    return [r["tab"] for r in rows if r["tab"] is not None]
+
+
+@app.patch("/progress/{progress_id}", response_model=AgentProgressOut)
 def patch_progress(progress_id: int, item: AgentProgressPatch):
     conn = get_connection()
     c = conn.cursor()
@@ -166,6 +217,7 @@ def patch_progress(progress_id: int, item: AgentProgressPatch):
     summary = r["summary"]
     artifacts = json.loads(r["artifacts"]) if r["artifacts"] else []
     tags = json.loads(r["tags"]) if r["tags"] else []
+    tab = r["tab"] if r["tab"] else "default"
 
     # apply partial updates
     if item.date is not None:
@@ -178,20 +230,38 @@ def patch_progress(progress_id: int, item: AgentProgressPatch):
         artifacts = item.artifacts
     if item.tags is not None:
         tags = item.tags
+    if item.tab is not None:
+        tab = item.tab
 
     c.execute(
-        "UPDATE progress SET date = ?, agent_id = ?, summary = ?, artifacts = ?, tags = ? WHERE id = ?",
-        (date, agent_id, summary, json.dumps(artifacts), json.dumps(tags), progress_id),
+        "UPDATE progress SET date = ?, agent_id = ?, summary = ?, artifacts = ?, tags = ?, tab = ? WHERE id = ?",
+        (
+            date,
+            agent_id,
+            summary,
+            json.dumps(artifacts),
+            json.dumps(tags),
+            tab,
+            progress_id,
+        ),
     )
     conn.commit()
     if c.rowcount == 0:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
     conn.close()
-    return {"id": progress_id}
+    return {
+        "id": progress_id,
+        "date": date,
+        "agent_id": agent_id,
+        "summary": summary,
+        "artifacts": artifacts,
+        "tags": tags,
+        "tab": tab,
+    }
 
 
-@app.get("/progress/{progress_id}")
+@app.get("/progress/{progress_id}", response_model=AgentProgressOut)
 def get_progress(progress_id: int):
     conn = get_connection()
     c = conn.cursor()
@@ -206,21 +276,26 @@ def get_progress(progress_id: int):
         "summary": r["summary"],
         "artifacts": json.loads(r["artifacts"]) if r["artifacts"] else [],
         "tags": json.loads(r["tags"]) if r["tags"] else [],
+        "tab": r["tab"] or "default",
     }
 
 
-@app.put("/progress/{progress_id}")
+@app.put("/progress/{progress_id}", response_model=AgentProgressOut)
 def update_progress(progress_id: int, item: AgentProgress):
     conn = get_connection()
     c = conn.cursor()
+    artifacts = item.artifacts or []
+    tags = item.tags or []
+    tab = item.tab or "default"
     c.execute(
-        "UPDATE progress SET date = ?, agent_id = ?, summary = ?, artifacts = ?, tags = ? WHERE id = ?",
+        "UPDATE progress SET date = ?, agent_id = ?, summary = ?, artifacts = ?, tags = ?, tab = ? WHERE id = ?",
         (
             item.date,
             item.agent_id,
             item.summary,
-            json.dumps(item.artifacts),
-            json.dumps(item.tags),
+            json.dumps(artifacts),
+            json.dumps(tags),
+            tab,
             progress_id,
         ),
     )
@@ -229,7 +304,15 @@ def update_progress(progress_id: int, item: AgentProgress):
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
     conn.close()
-    return {"id": progress_id}
+    return {
+        "id": progress_id,
+        "date": item.date,
+        "agent_id": item.agent_id,
+        "summary": item.summary,
+        "artifacts": artifacts,
+        "tags": tags,
+        "tab": tab,
+    }
 
 
 @app.delete("/progress/{progress_id}")

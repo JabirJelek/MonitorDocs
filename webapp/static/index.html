@@ -27,6 +27,9 @@
           <label>Tags (comma separated):
             <input type="text" name="tags" />
           </label>
+          <label>Tab:
+            <input type="text" name="tab" placeholder="default" />
+          </label>
           <div>
             <button type="submit">Save</button>
           </div>
@@ -34,6 +37,11 @@
       </section>
 
       <section id="list-monitors">
+        <div class="tabs-filter">
+          <label>Filter Tab:
+            <select id="tab-filter"><option value="">All</option></select>
+          </label>
+        </div>
         <h2>Saved Monitors</h2>
         <ul id="monitor-list"></ul>
       </section>
